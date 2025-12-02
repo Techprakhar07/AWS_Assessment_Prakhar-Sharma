@@ -1,1 +1,126 @@
-hello
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Task 2 - Fully Automated EC2 Static Website - Prakhar Sharma"
+
+Resources:
+
+  # -------------------- VPC --------------------
+  PrakharVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: "10.0.0.0/16"
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: "Prakhar_Sharma_VPC"
+
+  # -------------------- Internet Gateway --------------------
+  PrakharIGW:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: "Prakhar_Sharma_IGW"
+
+  PrakharIGWAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref PrakharVPC
+      InternetGatewayId: !Ref PrakharIGW
+
+  # -------------------- Public Subnet --------------------
+  PrakharPublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref PrakharVPC
+      CidrBlock: "10.0.1.0/24"
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: "Prakhar_Sharma_Public_Subnet"
+
+  # -------------------- Route Table --------------------
+  PrakharPublicRT:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref PrakharVPC
+      Tags:
+        - Key: Name
+          Value: "Prakhar_Sharma_Public_RT"
+
+  PrakharPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: PrakharIGWAttachment
+    Properties:
+      RouteTableId: !Ref PrakharPublicRT
+      DestinationCidrBlock: "0.0.0.0/0"
+      GatewayId: !Ref PrakharIGW
+
+  PrakharPublicRTAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrakharPublicSubnet
+      RouteTableId: !Ref PrakharPublicRT
+
+  # -------------------- Security Group --------------------
+  PrakharWebSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Allow HTTP and SSH"
+      VpcId: !Ref PrakharVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: "Prakhar_Sharma_SG"
+
+  # -------------------- EC2 Instance --------------------
+  PrakharEC2:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t2.micro
+      KeyName: Prakhar_Sharma_Key   # <<=== YOUR KEYPAIR NAME INSERTED
+      ImageId: ami-08e5424edfe926b43   # Amazon Linux 2 (Mumbai region)
+      SubnetId: !Ref PrakharPublicSubnet
+      SecurityGroupIds:
+        - !Ref PrakharWebSG
+      Tags:
+        - Key: Name
+          Value: "Prakhar_Sharma_EC2_WebServer"
+      UserData:
+        Fn::Base64: |
+          #!/bin/bash
+          yum update -y
+          amazon-linux-extras install nginx1 -y
+          systemctl enable nginx
+          systemctl start nginx
+
+          cat <<EOF > /usr/share/nginx/html/index.html
+          <html>
+          <head><title>Resume - Prakhar Sharma</title></head>
+          <body>
+              <h1>Resume - Prakhar Sharma</h1>
+              <p>Cloud & DevOps Engineer</p>
+              <p>Email: prakhar@example.com</p>
+              <h3>Skills</h3>
+              <ul>
+                  <li>AWS Cloud</li>
+                  <li>CloudFormation & Terraform</li>
+                  <li>Linux, Docker, GitHub CI/CD</li>
+              </ul>
+          </body>
+          </html>
+          EOF
+
+Outputs:
+  WebsiteURL:
+    Description: "Access your Resume Website"
+    Value: !Join ["", ["http://", !GetAtt PrakharEC2.PublicIp]]
